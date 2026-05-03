@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import sqlite3
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,8 @@ from models.schema import BOOK_FIELDS, utc_now_iso
 from services.arabic_utils import compact_identifier, normalize_arabic_for_search
 
 
-DB_PATH = Path("library.db")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DB_PATH = PROJECT_ROOT / "library.db"
 
 
 def get_connection(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
@@ -209,6 +211,52 @@ def import_books_csv(file_obj, db_path: Path | str = DB_PATH) -> int:
             add_book(mapped, db_path=db_path)
             count += 1
     return count
+
+
+def import_books_file(file_obj, file_name: str = "", db_path: Path | str = DB_PATH) -> int:
+    """Import CSV or Excel rows into the persistent SQLite database."""
+    suffix = Path(file_name or "").suffix.lower()
+    if suffix in {".xlsx", ".xls"}:
+        return import_books_excel(file_obj, db_path=db_path)
+    return import_books_csv(file_obj, db_path=db_path)
+
+
+def import_books_excel(file_obj, db_path: Path | str = DB_PATH) -> int:
+    """Import Excel rows, accepting English or Arabic headers."""
+    init_db(db_path)
+    try:
+        import pandas as pd
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError("Excel import requires pandas and openpyxl. Install requirements.txt first.") from exc
+
+    raw = file_obj.read()
+    if not isinstance(raw, bytes):
+        raw = bytes(str(raw), encoding="utf-8")
+    dataframe = pd.read_excel(BytesIO(raw), dtype=str).fillna("")
+    count = 0
+    for row in dataframe.to_dict(orient="records"):
+        mapped = {}
+        for key, value in row.items():
+            field = _map_csv_column(str(key or ""))
+            if field in BOOK_FIELDS:
+                mapped[field] = str(value or "")
+        if any(mapped.get(field) for field in BOOK_FIELDS):
+            add_book(mapped, db_path=db_path)
+            count += 1
+    return count
+
+
+def export_books_csv_text(db_path: Path | str = DB_PATH) -> str:
+    """Return a UTF-8 BOM CSV backup string for the current SQLite database."""
+    rows = list_books(db_path)
+    output = StringIO()
+    columns = ["id"] + BOOK_FIELDS + ["created_at", "updated_at"]
+    output.write("\ufeff")
+    writer = csv.DictWriter(output, fieldnames=columns)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: row.get(column, "") for column in columns})
+    return output.getvalue()
 
 
 def _map_csv_column(column: str) -> str:
