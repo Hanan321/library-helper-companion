@@ -7,3 +7,5 @@ env/
 .env
 .streamlit/secrets.toml
 .DS_Store
+OLD
+library.db
