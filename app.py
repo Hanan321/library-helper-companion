@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import csv
-from io import StringIO
-
 import streamlit as st
 
 from graph.librarian_graph import build_librarian_graph
@@ -137,29 +134,31 @@ def availability_section() -> None:
 
 def database_section() -> None:
     st.subheader("Database")
-    uploaded_csv = st.file_uploader(
-        "Import CSV with English or Arabic column names",
-        type=["csv"],
+    st.caption(f"Persistent database: `{database.DB_PATH}`")
+    st.info("Imported and saved catalog records stay in library.db after closing and reopening the app.")
+
+    uploaded_file = st.file_uploader(
+        "Import a new Excel/CSV file into library.db",
+        type=["csv", "xlsx", "xls"],
         key="database_csv_import",
     )
-    if uploaded_csv and st.button("Import CSV"):
+    if uploaded_file and st.button("Import into persistent database"):
         try:
-            count = database.import_books_csv(uploaded_csv)
-            st.success(f"Imported {count} books from CSV.")
+            count = database.import_books_file(uploaded_file, uploaded_file.name)
+            st.success(f"Imported {count} books into library.db. You do not need to upload this file again.")
         except UnicodeDecodeError:
             st.error("CSV import failed. Please upload a UTF-8 encoded CSV file.")
         except Exception as exc:
-            st.error(f"CSV import failed: {exc}")
+            st.error(f"Import failed: {exc}")
 
     rows = database.list_books()
     st.write(f"{len(rows)} books saved.")
 
     if rows:
         st.dataframe(rows, use_container_width=True, hide_index=True)
-        csv_text = rows_to_csv(rows)
         st.download_button(
-            "Export books to CSV",
-            data=csv_text,
+            "Backup/export current database as CSV",
+            data=database.export_books_csv_text(),
             file_name="library_books.csv",
             mime="text/csv",
         )
@@ -232,19 +231,6 @@ def render_book_result(book: dict) -> None:
         loc_cols[4].metric("Status", book.get("status") or "unknown")
         with st.expander("Catalog details"):
             st.json({key: book.get(key, "") for key in ["isbn", "issn", "deposit_number", "publisher", "edition", "notes", "source_links"]})
-
-
-def rows_to_csv(rows: list[dict]) -> str:
-    if not rows:
-        return ""
-    output = StringIO()
-    columns = ["id"] + BOOK_FIELDS + ["created_at", "updated_at"]
-    output.write("\ufeff")
-    writer = csv.DictWriter(output, fieldnames=columns)
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({column: row.get(column, "") for column in columns})
-    return output.getvalue()
 
 
 if __name__ == "__main__":
