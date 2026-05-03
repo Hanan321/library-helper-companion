@@ -1,172 +1,251 @@
+from __future__ import annotations
+
+import csv
+from io import StringIO
+
 import streamlit as st
 
-st.set_page_config(
-    page_title="Library Helper Companion",
-    page_icon="📚",
-    layout="centered"
-)
+from graph.librarian_graph import build_librarian_graph
+from models.schema import BOOK_FIELDS, STATUS_OPTIONS
+from services import database
 
-# ---------- Basic Styling ----------
-st.markdown("""
-<style>
-.main-title {
-    font-size: 36px;
-    font-weight: bold;
-    text-align: center;
-}
-.subtitle {
-    font-size: 20px;
-    text-align: center;
-    color: #555;
-}
-.task-card {
-    padding: 20px;
-    border-radius: 15px;
-    background-color: #f7f7f7;
-    margin-bottom: 15px;
-}
-.big-step {
-    font-size: 24px;
-    font-weight: bold;
-}
-.help-box {
-    background-color: #fff3cd;
-    padding: 15px;
-    border-radius: 10px;
-    font-size: 18px;
-}
-</style>
-""", unsafe_allow_html=True)
 
-# ---------- App Title ----------
-st.markdown('<div class="main-title">📚 Library Helper Companion</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="subtitle">A simple step-by-step helper for library tasks</div>',
-    unsafe_allow_html=True
-)
+st.set_page_config(page_title="AI Librarian Agent", page_icon="📚", layout="wide")
 
-st.divider()
 
-# ---------- Task Data ----------
-tasks = {
-    "Check In Returned Books": [
-        "Pick up one returned book at a time.",
-        "Scan the book barcode in the library system.",
-        "Check that the system says the book was checked in.",
-        "Look for any hold or warning message.",
-        "If there is no hold, place the book on the shelving cart.",
-        "If there is a hold, place the book on the hold shelf or ask a supervisor.",
-        "Repeat with the next returned book."
-    ],
-    "Shelve Books": [
-        "Look at the call number or shelf label on the book.",
-        "Go to the correct shelf section.",
-        "Compare the book label with nearby books.",
-        "Place the book in the correct order.",
-        "If you are unsure, place it on the review cart or ask for help."
-    ],
-    "Help a Patron Find a Book": [
-        "Ask the patron for the title, author, or topic.",
-        "Search the library catalog.",
-        "Check if the book is available.",
-        "Write down or show the shelf location.",
-        "If needed, walk with the patron to the correct area.",
-        "If the book is unavailable, offer to place a hold or ask a supervisor."
-    ],
-    "Process Holds": [
-        "Open the holds list or check the hold notification.",
-        "Find the item that needs to be held.",
-        "Print or write the hold slip if needed.",
-        "Place the hold slip with the item.",
-        "Put the item on the correct hold shelf.",
-        "Double-check the patron name or hold number."
-    ],
-    "Closing Checklist": [
-        "Check the return area for remaining books.",
-        "Make sure books are on the correct carts.",
-        "Log out of the library system.",
-        "Clean the desk area.",
-        "Check for personal items.",
-        "Tell the supervisor if anything unusual happened."
-    ]
-}
+@st.cache_resource
+def get_graph():
+    return build_librarian_graph()
 
-# ---------- Session State ----------
-if "selected_task" not in st.session_state:
-    st.session_state.selected_task = None
 
-if "step_index" not in st.session_state:
-    st.session_state.step_index = 0
+def main() -> None:
+    database.init_db()
 
-# ---------- Sidebar ----------
-st.sidebar.header("Settings")
-support_name = st.sidebar.text_input("Support person name", value="Supervisor")
-support_phone = st.sidebar.text_input("Support phone or note", value="Ask the front desk supervisor for help.")
+    st.title("AI Librarian Agent")
+    st.caption("Private library MVP: search, research, draft, review, save.")
 
-st.sidebar.info(
-    "This app is a task helper, not a medical tool. "
-    "A supervisor or trusted person should review the checklists."
-)
+    tabs = st.tabs(["Search My Library", "Research New Book", "Catalog Draft", "Where to Get the Book", "Database"])
 
-# ---------- Task Selection ----------
-st.subheader("Choose a task")
+    with tabs[0]:
+        search_my_library()
 
-for task_name in tasks:
-    if st.button(task_name, use_container_width=True):
-        st.session_state.selected_task = task_name
-        st.session_state.step_index = 0
+    with tabs[1]:
+        research_new_book()
 
-st.divider()
+    with tabs[2]:
+        catalog_draft_section()
 
-# ---------- Task Step Mode ----------
-if st.session_state.selected_task:
-    task_name = st.session_state.selected_task
-    steps = tasks[task_name]
-    current_step = st.session_state.step_index
+    with tabs[3]:
+        availability_section()
 
-    st.subheader(f"Current Task: {task_name}")
+    with tabs[4]:
+        database_section()
 
-    st.progress((current_step + 1) / len(steps))
 
-    st.markdown(
-        f"""
-        <div class="task-card">
-            <div class="big-step">Step {current_step + 1} of {len(steps)}</div>
-            <p style="font-size:22px;">{steps[current_step]}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+def search_my_library() -> None:
+    st.subheader("Search My Library")
+    query = st.text_input("Search by title, author, ISBN, ISSN, deposit number, or Arabic text", key="library_search")
+    if st.button("Search", type="primary", use_container_width=False) or query:
+        matches = database.search_books(query)
+        if not matches:
+            st.info("No local matches found.")
+            return
+        for book in matches:
+            render_book_result(book)
 
-    col1, col2 = st.columns(2)
 
-    with col1:
-        if st.button("⬅️ Previous Step", use_container_width=True):
-            if st.session_state.step_index > 0:
-                st.session_state.step_index -= 1
-                st.rerun()
+def research_new_book() -> None:
+    st.subheader("Research New Book")
+    text_query = st.text_area("Title, author, ISBN/ISSN, Arabic text, or notes", height=120)
+    uploaded = st.file_uploader("Upload cover or copyright page image", type=["png", "jpg", "jpeg", "webp"])
 
-    with col2:
-        if st.button("Next Step ➡️", use_container_width=True):
-            if st.session_state.step_index < len(steps) - 1:
-                st.session_state.step_index += 1
-                st.rerun()
-            else:
-                st.success("Task completed. Great job!")
+    if st.button("Research", type="primary"):
+        image_bytes = uploaded.getvalue() if uploaded else None
+        image_mime = uploaded.type if uploaded else ""
+        with st.spinner("Searching private database first, then legal metadata sources..."):
+            state = get_graph().invoke(
+                {
+                    "query": text_query,
+                    "image_bytes": image_bytes,
+                    "image_mime_type": image_mime,
+                    "approved_for_save": False,
+                }
+            )
+        st.session_state["last_research_state"] = state
+        st.session_state["catalog_draft"] = state.get("catalog_draft", {})
+        st.session_state["availability_links"] = state.get("availability_links", [])
+
+    state = st.session_state.get("last_research_state")
+    if not state:
+        return
+
+    private_matches = state.get("private_matches", [])
+    if private_matches:
+        st.success("Found possible match in the private library before online recommendations.")
+        for book in private_matches[:5]:
+            render_book_result(book)
+    else:
+        st.info("No private database match found. A catalog draft was generated from available sources.")
+
+    if state.get("conflicts"):
+        st.warning("Source conflicts found. Review notes before saving.")
+        st.write(state["conflicts"])
+
+    if state.get("uncertainty_notes"):
+        with st.expander("Confidence and uncertainty notes", expanded=True):
+            for note in state["uncertainty_notes"]:
+                st.write(f"- {note}")
+
+
+def catalog_draft_section() -> None:
+    st.subheader("Catalog Draft")
+    draft = st.session_state.get("catalog_draft")
+    if not draft:
+        st.info("Research a new book first, or enter a manual sample below.")
+        manual_sample_form()
+        return
+
+    edited = editable_book_form(draft, form_key="catalog_draft_form")
+    if edited:
+        st.session_state["catalog_draft"] = edited
+        state = get_graph().invoke({"catalog_draft": edited, "approved_for_save": True})
+        st.success(f"Saved book #{state.get('saved_book_id')} to the SQLite database.")
 
     st.divider()
+    manual_sample_form()
 
-    if st.button("❓ I Need Help", use_container_width=True):
-        st.markdown(
-            f"""
-            <div class="help-box">
-                <b>Ask for help:</b><br>
-                Contact: {support_name}<br>
-                Note: {support_phone}
-            </div>
-            """,
-            unsafe_allow_html=True
+
+def availability_section() -> None:
+    st.subheader("Where to Get the Book")
+    links = st.session_state.get("availability_links", [])
+    draft = st.session_state.get("catalog_draft", {})
+
+    st.caption("Only legal free, paid, or safe search options are shown. Illegal download sites are not used.")
+    if not links and not draft:
+        st.info("Research a book first to generate links.")
+        return
+
+    if links:
+        for item in links:
+            label = f"{item.get('label', 'Link')} ({item.get('kind', 'search suggestion')})"
+            st.markdown(f"- [{label}]({item.get('url', '#')})")
+    elif draft.get("source_links"):
+        st.text(draft["source_links"])
+    else:
+        st.info("No verified purchase or free download link was found.")
+
+
+def database_section() -> None:
+    st.subheader("Database")
+    uploaded_csv = st.file_uploader(
+        "Import CSV with English or Arabic column names",
+        type=["csv"],
+        key="database_csv_import",
+    )
+    if uploaded_csv and st.button("Import CSV"):
+        try:
+            count = database.import_books_csv(uploaded_csv)
+            st.success(f"Imported {count} books from CSV.")
+        except UnicodeDecodeError:
+            st.error("CSV import failed. Please upload a UTF-8 encoded CSV file.")
+        except Exception as exc:
+            st.error(f"CSV import failed: {exc}")
+
+    rows = database.list_books()
+    st.write(f"{len(rows)} books saved.")
+
+    if rows:
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+        csv_text = rows_to_csv(rows)
+        st.download_button(
+            "Export books to CSV",
+            data=csv_text,
+            file_name="library_books.csv",
+            mime="text/csv",
         )
+    else:
+        st.info("No books saved yet.")
 
-else:
-    st.info("Choose a task above to begin.")
+
+def manual_sample_form() -> None:
+    with st.expander("Add manual sample book with location"):
+        sample = {
+            "title": "Manual sample book",
+            "author": "",
+            "publisher": "",
+            "edition": "",
+            "publication_year_gregorian": "",
+            "publication_year_hijri": "",
+            "isbn": "",
+            "issn": "",
+            "deposit_number": "",
+            "language": "",
+            "category": "",
+            "description": "",
+            "room": "Main room",
+            "cabinet": "Cabinet A",
+            "shelf": "Shelf 1",
+            "row_position": "Row 1",
+            "status": "available",
+            "notes": "Manual entry.",
+            "source_links": "",
+        }
+        edited = editable_book_form(sample, form_key="manual_sample_form")
+        if edited:
+            book_id = database.add_book(edited)
+            st.success(f"Saved manual sample book #{book_id}.")
+
+
+def editable_book_form(draft: dict, form_key: str) -> dict | None:
+    with st.form(form_key):
+        col1, col2 = st.columns(2)
+        values = {}
+        for index, field in enumerate(BOOK_FIELDS):
+            target = col1 if index % 2 == 0 else col2
+            label = field.replace("_", " ").title()
+            current = draft.get(field, "")
+            if field == "status":
+                selected_index = STATUS_OPTIONS.index(current) if current in STATUS_OPTIONS else STATUS_OPTIONS.index("unknown")
+                values[field] = target.selectbox(label, STATUS_OPTIONS, index=selected_index)
+            elif field in {"description", "notes", "source_links"}:
+                values[field] = st.text_area(label, value=current or "", height=120)
+            else:
+                values[field] = target.text_input(label, value=current or "")
+
+        submitted = st.form_submit_button("Save approved catalog draft", type="primary")
+        if submitted:
+            return values
+    return None
+
+
+def render_book_result(book: dict) -> None:
+    title = book.get("title") or "Untitled"
+    author = book.get("author") or "Unknown author"
+    with st.container(border=True):
+        st.markdown(f"**{title}**")
+        st.write(author)
+        loc_cols = st.columns(5)
+        loc_cols[0].metric("Room", book.get("room") or "Unknown")
+        loc_cols[1].metric("Cabinet", book.get("cabinet") or "Unknown")
+        loc_cols[2].metric("Shelf", book.get("shelf") or "Unknown")
+        loc_cols[3].metric("Row/Position", book.get("row_position") or "Unknown")
+        loc_cols[4].metric("Status", book.get("status") or "unknown")
+        with st.expander("Catalog details"):
+            st.json({key: book.get(key, "") for key in ["isbn", "issn", "deposit_number", "publisher", "edition", "notes", "source_links"]})
+
+
+def rows_to_csv(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    output = StringIO()
+    columns = ["id"] + BOOK_FIELDS + ["created_at", "updated_at"]
+    output.write("\ufeff")
+    writer = csv.DictWriter(output, fieldnames=columns)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: row.get(column, "") for column in columns})
+    return output.getvalue()
+
+
+if __name__ == "__main__":
+    main()
