@@ -56,6 +56,7 @@ def extract_basic_fields_from_text(text: str) -> dict[str, Any]:
     identifiers = detect_identifiers(text)
     lines = [_clean_text(line) for line in (text or "").splitlines() if _clean_text(line)]
     title = _extract_likely_title(lines)
+    article_title = _extract_article_title(lines)
     author = ""
     publisher = ""
     year = ""
@@ -66,6 +67,10 @@ def extract_basic_fields_from_text(text: str) -> dict[str, Any]:
         lowered = normalized_line.lower()
         if any(token in lowered for token in ["author", "by ", "المؤلف", "تأليف"]):
             author = _strip_label(line)
+        if any(token in lowered for token in ["إعداد", "اعداد", "prepared by", "editor"]):
+            next_index = lines.index(line) + 1 if line in lines else -1
+            if 0 <= next_index < len(lines) and not author:
+                author = _clean_text(lines[next_index])
         if any(token in lowered for token in ["publisher", "الناشر", "دار"]):
             publisher = _strip_label(line)
         gregorian = re.search(r"(?<![0-9])(1[5-9][0-9]{2}|20[0-9]{2})(?![0-9])\s*(?:م|AD|CE)?", normalized_line)
@@ -84,6 +89,7 @@ def extract_basic_fields_from_text(text: str) -> dict[str, Any]:
         "isbn": identifiers.isbn,
         "issn": identifiers.issn,
         "deposit_number": identifiers.deposit_number,
+        "description": article_title,
         "notes": "\n".join(identifiers.notes),
     }
 
@@ -175,6 +181,24 @@ def _extract_likely_title(lines: list[str]) -> str:
         if candidate:
             return candidate
     return ""
+
+
+def _extract_article_title(lines: list[str]) -> str:
+    article_lines = []
+    skip_words = ["مجلة", "العدد", "عدد", "ردمد", "ردمك", "issn", "isbn"]
+    collecting = False
+    for line in lines:
+        normalized = normalize_digits(line).lower()
+        if any(word in normalized for word in ["إعداد", "اعداد", "prepared by"]):
+            break
+        if not collecting and any(word in normalized for word in ["هـ", "ه-", "م", "20", "19"]):
+            collecting = True
+            continue
+        if collecting and not any(word in normalized for word in skip_words) and not _looks_like_identifier_line(line):
+            article_lines.append(line)
+        if len(article_lines) >= 2:
+            break
+    return " - ".join(article_lines)
 
 
 def _looks_like_identifier_line(value: str) -> bool:

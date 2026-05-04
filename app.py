@@ -112,17 +112,54 @@ def research_new_book() -> None:
     else:
         st.info("No private database match found.")
 
-    render_extracted_text(state)
-    render_extracted_details_table(state)
-    render_online_search_results(state)
-    render_source_evidence(state)
-    render_conflicts_uncertainty(state)
-    render_where_to_get(state)
-    render_research_catalog_draft(state)
+    render_catalog_summary(state)
+    render_source_summary(state)
+    with st.expander("Raw OCR text", expanded=False):
+        render_extracted_text(state)
+    with st.expander("Source details", expanded=False):
+        render_online_search_results(state)
+        render_source_evidence(state)
+        render_conflicts_uncertainty(state)
     render_research_debug(state)
 
+
+def render_catalog_summary(state: dict) -> None:
+    st.subheader("Catalog Summary")
+    draft = state.get("catalog_draft", {})
+    identifiers = state.get("identifiers", {})
+    get_link = best_get_link(state)
+    rows = [
+        {"Field": "Title", "Value": draft.get("title", "")},
+        {"Field": "Article title", "Value": draft.get("description", "")},
+        {"Field": "Author / Editor", "Value": draft.get("author", "")},
+        {"Field": "Publisher", "Value": draft.get("publisher", "")},
+        {"Field": "Hijri date", "Value": draft.get("publication_year_hijri", "")},
+        {"Field": "Gregorian date", "Value": draft.get("publication_year_gregorian", "")},
+        {"Field": "ISBN", "Value": draft.get("isbn") or identifiers.get("isbn", "")},
+        {"Field": "ISSN", "Value": draft.get("issn") or identifiers.get("issn", "")},
+        {"Field": "Deposit number", "Value": draft.get("deposit_number") or identifiers.get("deposit_number", "")},
+        {"Field": "Category", "Value": draft.get("category") or state.get("item_type", "")},
+        {"Field": "Where to buy/get", "Value": get_link.get("label", "")},
+    ]
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+    if get_link.get("url"):
+        st.markdown(f"**Where to buy/get:** [{get_link['label']}]({get_link['url']})")
+    if st.button("Save to Library", key="save_research_summary"):
+        book_id = database.add_book(draft)
+        st.success(f"Saved book #{book_id} to library.db.")
+
+
+def render_source_summary(state: dict) -> None:
+    status = state.get("online_search_status", "no_verified_result")
+    if status == "verified_result":
+        st.success("Online source found. Review the catalog summary, then save if correct.")
+    elif status == "image_only":
+        st.warning("No verified online source was found. This draft is based only on the uploaded image.")
+    else:
+        st.info("No exact verified online source was found. Search suggestions are available in Source details.")
+
+
 def render_extracted_text(state: dict) -> None:
-    st.subheader("Extracted Text From Image")
     text = state.get("extracted_text", "")
     if text:
         st.text_area("OCR text", value=text, height=180, disabled=True)
@@ -147,6 +184,28 @@ def render_extracted_details_table(state: dict) -> None:
         "Confidence": state.get("confidence_level", "low"),
     }
     st.dataframe([row], use_container_width=True, hide_index=True)
+
+
+def best_get_link(state: dict) -> dict:
+    links = state.get("availability_links", [])
+    web_results = state.get("web_results", [])
+    preferred_terms = ["Bookstore", "Marketplace", "Amazon", "AbeBooks", "eBay", "publisher", "Internet Archive", "Open Library"]
+    for term in preferred_terms:
+        for result in web_results:
+            haystack = " ".join([result.get("source", ""), result.get("title", ""), result.get("url", "")]).lower()
+            if term.lower() in haystack:
+                return {"label": result.get("title") or result.get("source") or term, "url": result.get("url", "")}
+        for link in links:
+            haystack = " ".join([link.get("label", ""), link.get("url", "")]).lower()
+            if term.lower() in haystack:
+                return {"label": link.get("label", term), "url": link.get("url", "")}
+    if web_results:
+        first = web_results[0]
+        return {"label": first.get("title") or first.get("source") or "Online source", "url": first.get("url", "")}
+    if links:
+        first = links[0]
+        return {"label": first.get("label", "Search suggestion"), "url": first.get("url", "")}
+    return {"label": "", "url": ""}
 
 
 def render_online_search_results(state: dict) -> None:
