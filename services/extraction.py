@@ -55,23 +55,23 @@ def detect_identifiers(text: str) -> IdentifierResult:
 def extract_basic_fields_from_text(text: str) -> dict[str, Any]:
     identifiers = detect_identifiers(text)
     lines = [_clean_text(line) for line in (text or "").splitlines() if _clean_text(line)]
-    title = next((line for line in lines if not _looks_like_identifier_line(line)), "") if lines else ""
+    title = _extract_likely_title(lines)
     author = ""
     publisher = ""
     year = ""
     hijri_year = ""
 
-    for line in lines[1:8]:
+    for line in lines[:12]:
         normalized_line = normalize_digits(line)
         lowered = normalized_line.lower()
         if any(token in lowered for token in ["author", "by ", "المؤلف", "تأليف"]):
             author = _strip_label(line)
         if any(token in lowered for token in ["publisher", "الناشر", "دار"]):
             publisher = _strip_label(line)
-        gregorian = re.search(r"\b(1[5-9][0-9]{2}|20[0-9]{2})\b", normalized_line)
+        gregorian = re.search(r"(?<![0-9])(1[5-9][0-9]{2}|20[0-9]{2})(?![0-9])\s*(?:م|AD|CE)?", normalized_line)
         if gregorian and not year:
             year = gregorian.group(1)
-        hijri = re.search(r"\b(1[2345][0-9]{2})\s*(?:هـ|ه|AH)?\b", normalized_line)
+        hijri = re.search(r"(?<![0-9])(1[2345][0-9]{2})(?![0-9])\s*(?:هـ|ه|AH)?", normalized_line)
         if hijri and not hijri_year:
             hijri_year = hijri.group(1)
 
@@ -131,13 +131,19 @@ def extract_from_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> dic
         )
         content = response.choices[0].message.content or "{}"
         parsed = json.loads(content)
-        raw_text = parsed.get("raw_text", "")
-        identifiers = detect_identifiers("\n".join([raw_text, json.dumps(parsed, ensure_ascii=False)]))
+        notes = parsed.get("notes", "")
+        raw_text = parsed.get("raw_text", "") or (notes if _looks_like_ocr_text(notes) else "")
+        all_text = "\n".join([raw_text, notes, json.dumps(parsed, ensure_ascii=False)])
+        identifiers = detect_identifiers(all_text)
+        parsed_text_fields = extract_basic_fields_from_text(all_text)
         fields = {key: parsed.get(key, "") for key in parsed if key != "raw_text"}
+        for key, value in parsed_text_fields.items():
+            if value and not fields.get(key):
+                fields[key] = value
         fields["isbn"] = fields.get("isbn") or identifiers.isbn
         fields["issn"] = fields.get("issn") or identifiers.issn
         fields["deposit_number"] = fields.get("deposit_number") or identifiers.deposit_number
-        return {"raw_text": raw_text, "fields": fields, "notes": parsed.get("notes", "")}
+        return {"raw_text": raw_text, "fields": fields, "notes": notes}
     except Exception as exc:  # pragma: no cover - depends on external API
         return {"raw_text": "", "fields": {}, "notes": f"Image extraction failed: {exc}"}
 
@@ -159,9 +165,27 @@ def _strip_label(value: str) -> str:
     return _clean_text(re.sub(r"^[^:：\-]+[:：\-]", "", value or ""))
 
 
+def _extract_likely_title(lines: list[str]) -> str:
+    for line in lines:
+        if _looks_like_identifier_line(line):
+            continue
+        candidate = re.split(r"[،,؛;]", line, maxsplit=1)[0]
+        candidate = re.split(r"\s[-–—]\s", candidate, maxsplit=1)[0]
+        candidate = _clean_text(candidate)
+        if candidate:
+            return candidate
+    return ""
+
+
 def _looks_like_identifier_line(value: str) -> bool:
     normalized = normalize_identifier_text(value).strip()
     return bool(
         re.search(rf"^\s*(?:{ISBN_LABELS}|{ISSN_LABELS}|{DEPOSIT_LABELS})\b", normalized, flags=re.IGNORECASE)
         or re.fullmatch(r"(?:ISBN|ISSN)?\s*[0-9Xx\-\s/]{8,20}", normalized, flags=re.IGNORECASE)
     )
+
+
+def _looks_like_ocr_text(value: str) -> bool:
+    if not value or "failed" in value.lower() or "skipped" in value.lower():
+        return False
+    return bool(re.search(r"[\u0600-\u06FF]|ISBN|ISSN|ردمك|ردمد|[12][0-9]{3}", value, flags=re.IGNORECASE))

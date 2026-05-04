@@ -113,6 +113,7 @@ def research_new_book() -> None:
         st.info("No private database match found.")
 
     render_extracted_text(state)
+    render_extracted_details_table(state)
     render_online_search_results(state)
     render_source_evidence(state)
     render_conflicts_uncertainty(state)
@@ -127,6 +128,25 @@ def render_extracted_text(state: dict) -> None:
         st.text_area("OCR text", value=text, height=180, disabled=True)
     else:
         st.info("No uploaded image text was extracted.")
+
+
+def render_extracted_details_table(state: dict) -> None:
+    st.subheader("Organized Extracted Details")
+    draft = state.get("catalog_draft", {})
+    identifiers = state.get("identifiers", {})
+    row = {
+        "Title": draft.get("title", ""),
+        "Author / Editor": draft.get("author", ""),
+        "Publisher": draft.get("publisher", ""),
+        "Hijri Date": draft.get("publication_year_hijri", ""),
+        "Gregorian Date": draft.get("publication_year_gregorian", ""),
+        "ISBN": draft.get("isbn") or identifiers.get("isbn", ""),
+        "ISSN": draft.get("issn") or identifiers.get("issn", ""),
+        "Deposit Number": draft.get("deposit_number") or identifiers.get("deposit_number", ""),
+        "Item Type": state.get("item_type", "unknown"),
+        "Confidence": state.get("confidence_level", "low"),
+    }
+    st.dataframe([row], use_container_width=True, hide_index=True)
 
 
 def render_online_search_results(state: dict) -> None:
