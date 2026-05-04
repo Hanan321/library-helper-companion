@@ -128,7 +128,6 @@ def render_catalog_summary(state: dict) -> None:
     st.subheader("Catalog Summary")
     draft = state.get("catalog_draft", {})
     identifiers = state.get("identifiers", {})
-    get_link = best_get_link(state)
     article_title = draft.get("description") or extract_basic_fields_from_text(state.get("extracted_text", "")).get("description", "")
     rows = [
         {"Field": "Title", "Value": draft.get("title", "")},
@@ -141,11 +140,8 @@ def render_catalog_summary(state: dict) -> None:
         {"Field": "ISSN", "Value": draft.get("issn") or identifiers.get("issn", "")},
         {"Field": "Deposit number", "Value": draft.get("deposit_number") or identifiers.get("deposit_number", "")},
         {"Field": "Category", "Value": draft.get("category") or state.get("item_type", "")},
-        {"Field": "Where to buy/get", "Value": get_link.get("label", "")},
     ]
     st.dataframe(rows, use_container_width=True, hide_index=True)
-    if get_link.get("url"):
-        st.markdown(f"**Where to buy/get:** [{get_link['label']}]({get_link['url']})")
     if st.button("Save to Library", key="save_research_summary"):
         save_draft = dict(draft)
         if article_title and not save_draft.get("description"):
@@ -189,28 +185,6 @@ def render_extracted_details_table(state: dict) -> None:
         "Confidence": state.get("confidence_level", "low"),
     }
     st.dataframe([row], use_container_width=True, hide_index=True)
-
-
-def best_get_link(state: dict) -> dict:
-    links = state.get("availability_links", [])
-    web_results = state.get("web_results", [])
-    preferred_terms = ["Bookstore", "Marketplace", "Amazon", "AbeBooks", "eBay", "publisher", "Internet Archive", "Open Library"]
-    for term in preferred_terms:
-        for result in web_results:
-            haystack = " ".join([result.get("source", ""), result.get("title", ""), result.get("url", "")]).lower()
-            if term.lower() in haystack:
-                return {"label": result.get("title") or result.get("source") or term, "url": result.get("url", "")}
-        for link in links:
-            haystack = " ".join([link.get("label", ""), link.get("url", "")]).lower()
-            if term.lower() in haystack:
-                return {"label": link.get("label", term), "url": link.get("url", "")}
-    if web_results:
-        first = web_results[0]
-        return {"label": first.get("title") or first.get("source") or "Online source", "url": first.get("url", "")}
-    if links:
-        first = links[0]
-        return {"label": first.get("label", "Search suggestion"), "url": first.get("url", "")}
-    return {"label": "", "url": ""}
 
 
 def render_online_search_results(state: dict) -> None:
