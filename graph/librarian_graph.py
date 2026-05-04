@@ -104,7 +104,9 @@ def extract_image_node(state: LibrarianState) -> LibrarianState:
     result = extract_from_image(image_bytes, state.get("image_mime_type") or "image/jpeg")
     extracted_fields = dict(state.get("extracted_fields", {}))
     raw_text = result.get("raw_text", "")
-    ocr_fields = extract_basic_fields_from_text(raw_text) if raw_text else {}
+    extraction_notes = str(result.get("notes", ""))
+    parse_text = "\n".join(part for part in [raw_text, extraction_notes] if part)
+    ocr_fields = extract_basic_fields_from_text(parse_text) if parse_text else {}
     extracted_fields.update({key: value for key, value in ocr_fields.items() if value and not extracted_fields.get(key)})
     extracted_fields.update({key: value for key, value in result.get("fields", {}).items() if value})
     notes = list(state.get("uncertainty_notes", []))
@@ -115,12 +117,12 @@ def extract_image_node(state: LibrarianState) -> LibrarianState:
         {
             "step": "extract_from_image",
             "query": "uploaded image",
-            "returned_result": bool(raw_text or result.get("fields")),
-            "note": "OCR/image extraction returned text or fields." if raw_text or result.get("fields") else "No image text extracted.",
+            "returned_result": bool(parse_text or result.get("fields")),
+            "note": "OCR/image extraction returned text or fields." if parse_text or result.get("fields") else "No image text extracted.",
         }
     )
     return {
-        "extracted_text": raw_text,
+        "extracted_text": raw_text or (extraction_notes if ocr_fields else ""),
         "extracted_fields": extracted_fields,
         "uncertainty_notes": notes,
         "lookup_debug": debug,
