@@ -8,7 +8,7 @@ import streamlit as st
 from graph.librarian_graph import build_librarian_graph
 from models.schema import BOOK_FIELDS, STATUS_OPTIONS
 from services import database
-from services.extraction import extract_basic_fields_from_text
+from services.extraction import extract_basic_fields_from_text, normalize_issn
 
 
 st.set_page_config(page_title="AI Librarian Agent", page_icon="📚", layout="wide")
@@ -128,6 +128,7 @@ def render_catalog_summary(state: dict) -> None:
     st.subheader("Catalog Summary")
     draft = state.get("catalog_draft", {})
     identifiers = state.get("identifiers", {})
+    issn = normalize_issn(draft.get("issn", "")) or normalize_issn(identifiers.get("issn", ""))
     article_title = draft.get("description") or extract_basic_fields_from_text(state.get("extracted_text", "")).get("description", "")
     rows = [
         {"Field": "Title", "Value": draft.get("title", "")},
@@ -137,7 +138,7 @@ def render_catalog_summary(state: dict) -> None:
         {"Field": "Hijri date", "Value": draft.get("publication_year_hijri", "")},
         {"Field": "Gregorian date", "Value": draft.get("publication_year_gregorian", "")},
         {"Field": "ISBN", "Value": draft.get("isbn") or identifiers.get("isbn", "")},
-        {"Field": "ISSN", "Value": draft.get("issn") or identifiers.get("issn", "")},
+        {"Field": "ISSN", "Value": issn},
         {"Field": "Deposit number", "Value": draft.get("deposit_number") or identifiers.get("deposit_number", "")},
         {"Field": "Category", "Value": draft.get("category") or state.get("item_type", "")},
     ]
@@ -172,6 +173,7 @@ def render_extracted_details_table(state: dict) -> None:
     st.subheader("Organized Extracted Details")
     draft = state.get("catalog_draft", {})
     identifiers = state.get("identifiers", {})
+    issn = normalize_issn(draft.get("issn", "")) or normalize_issn(identifiers.get("issn", ""))
     row = {
         "Title": draft.get("title", ""),
         "Author / Editor": draft.get("author", ""),
@@ -179,7 +181,7 @@ def render_extracted_details_table(state: dict) -> None:
         "Hijri Date": draft.get("publication_year_hijri", ""),
         "Gregorian Date": draft.get("publication_year_gregorian", ""),
         "ISBN": draft.get("isbn") or identifiers.get("isbn", ""),
-        "ISSN": draft.get("issn") or identifiers.get("issn", ""),
+        "ISSN": issn,
         "Deposit Number": draft.get("deposit_number") or identifiers.get("deposit_number", ""),
         "Item Type": state.get("item_type", "unknown"),
         "Confidence": state.get("confidence_level", "low"),

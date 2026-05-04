@@ -54,6 +54,11 @@ def detect_identifiers(text: str) -> IdentifierResult:
     return result
 
 
+def normalize_issn(value: str) -> str:
+    """Return a display-ready ISSN only when it passes the ISSN checksum."""
+    return _clean_issn(value) if _valid_issn(value) else ""
+
+
 def extract_basic_fields_from_text(text: str) -> dict[str, Any]:
     identifiers = detect_identifiers(text)
     lines = [_clean_text(line) for line in (text or "").splitlines() if _clean_text(line)]
@@ -149,7 +154,7 @@ def extract_from_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> dic
             if value and not fields.get(key):
                 fields[key] = value
         fields["isbn"] = fields.get("isbn") or identifiers.isbn
-        fields["issn"] = fields.get("issn") or identifiers.issn
+        fields["issn"] = normalize_issn(fields.get("issn", "")) or identifiers.issn
         fields["deposit_number"] = fields.get("deposit_number") or identifiers.deposit_number
         return {"raw_text": raw_text, "fields": fields, "notes": notes}
     except Exception as exc:  # pragma: no cover - depends on external API

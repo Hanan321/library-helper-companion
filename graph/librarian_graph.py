@@ -9,7 +9,7 @@ from services import database
 from services.availability import format_availability_links, research_availability
 from services.book_lookup import build_search_links, lookup_book_apis
 from services.date_utils import hijri_to_gregorian_placeholder
-from services.extraction import detect_identifiers, extract_basic_fields_from_text, extract_from_image
+from services.extraction import detect_identifiers, extract_basic_fields_from_text, extract_from_image, normalize_issn
 from services.arabic_utils import normalize_arabic_for_search
 from services.web_search import build_legal_search_links, search_web, summarize_sources
 
@@ -140,7 +140,7 @@ def detect_identifiers_node(state: LibrarianState) -> LibrarianState:
     detected = detect_identifiers(text)
     fields = dict(state.get("extracted_fields", {}))
     fields["isbn"] = fields.get("isbn") or detected.isbn
-    fields["issn"] = fields.get("issn") or detected.issn
+    fields["issn"] = normalize_issn(fields.get("issn", "")) or detected.issn
     fields["deposit_number"] = fields.get("deposit_number") or detected.deposit_number
     notes = list(state.get("uncertainty_notes", [])) + detected.notes
     item_type = detect_item_type(text, fields)
@@ -421,6 +421,7 @@ def _best_fields(state: LibrarianState) -> dict[str, Any]:
     for key in ["isbn", "issn", "deposit_number"]:
         if identifiers.get(key) and not fields.get(key):
             fields[key] = identifiers[key]
+    fields["issn"] = normalize_issn(fields.get("issn", ""))
     return fields
 
 
