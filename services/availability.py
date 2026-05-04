@@ -6,9 +6,16 @@ from typing import Any
 import requests
 
 
-def research_availability(title: str = "", author: str = "", isbn: str = "") -> list[dict[str, str]]:
+def research_availability(
+    title: str = "",
+    author: str = "",
+    isbn: str = "",
+    issn: str = "",
+    publisher: str = "",
+    year: str = "",
+) -> list[dict[str, str]]:
     """Return legal verified links and clearly labeled search suggestions."""
-    terms = " ".join(part for part in [title, author, isbn] if part).strip()
+    terms = " ".join(part for part in [title, author, publisher, isbn, issn, year] if part).strip()
     links: list[dict[str, str]] = []
 
     if isbn:
@@ -23,11 +30,11 @@ def research_availability(title: str = "", author: str = "", isbn: str = "") -> 
         encoded = urllib.parse.quote_plus(terms)
         links.extend(
             [
+                {"label": "Google Search", "url": f"https://www.google.com/search?q={encoded}", "kind": "search suggestion"},
                 {"label": "Google Books", "url": f"https://books.google.com/books?q={encoded}", "kind": "search suggestion"},
+                {"label": "WorldCat", "url": f"https://search.worldcat.org/search?q={encoded}", "kind": "search suggestion"},
+                {"label": "Internet Archive", "url": f"https://archive.org/search?query={encoded}", "kind": "search suggestion"},
                 {"label": "Publisher page", "url": f"https://www.google.com/search?q={encoded}+publisher", "kind": "search suggestion"},
-                {"label": "Amazon", "url": f"https://www.amazon.com/s?k={encoded}", "kind": "search suggestion"},
-                {"label": "AbeBooks", "url": f"https://www.abebooks.com/servlet/SearchResults?kn={encoded}", "kind": "search suggestion"},
-                {"label": "eBay", "url": f"https://www.ebay.com/sch/i.html?_nkw={encoded}", "kind": "search suggestion"},
             ]
         )
     return links

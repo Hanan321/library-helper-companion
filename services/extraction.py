@@ -55,7 +55,7 @@ def detect_identifiers(text: str) -> IdentifierResult:
 def extract_basic_fields_from_text(text: str) -> dict[str, Any]:
     identifiers = detect_identifiers(text)
     lines = [_clean_text(line) for line in (text or "").splitlines() if _clean_text(line)]
-    title = lines[0] if lines else ""
+    title = next((line for line in lines if not _looks_like_identifier_line(line)), "") if lines else ""
     author = ""
     publisher = ""
     year = ""
@@ -157,3 +157,11 @@ def _clean_text(value: str) -> str:
 
 def _strip_label(value: str) -> str:
     return _clean_text(re.sub(r"^[^:：\-]+[:：\-]", "", value or ""))
+
+
+def _looks_like_identifier_line(value: str) -> bool:
+    normalized = normalize_identifier_text(value).strip()
+    return bool(
+        re.search(rf"^\s*(?:{ISBN_LABELS}|{ISSN_LABELS}|{DEPOSIT_LABELS})\b", normalized, flags=re.IGNORECASE)
+        or re.fullmatch(r"(?:ISBN|ISSN)?\s*[0-9Xx\-\s/]{8,20}", normalized, flags=re.IGNORECASE)
+    )
