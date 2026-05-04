@@ -77,6 +77,7 @@ def research_new_book() -> None:
         return
 
     st.caption(f"Detected item type: {state.get('item_type', 'unknown')}")
+    st.subheader("Private Library Match")
     private_matches = state.get("private_matches", [])
     if private_matches:
         st.success("Found possible match in the private library before online recommendations.")
@@ -85,25 +86,30 @@ def research_new_book() -> None:
     else:
         st.info("No private database match found.")
 
+    render_extracted_text(state)
     render_online_search_results(state)
+    render_source_evidence(state)
+    render_conflicts_uncertainty(state)
+    render_where_to_get(state)
+    render_research_catalog_draft(state)
     render_lookup_debug(state)
 
-    if state.get("conflicts"):
-        st.warning("Source conflicts found. Review notes before saving.")
-        st.write(state["conflicts"])
-
-    if state.get("uncertainty_notes"):
-        with st.expander("Confidence and uncertainty notes", expanded=True):
-            for note in state["uncertainty_notes"]:
-                st.write(f"- {note}")
+def render_extracted_text(state: dict) -> None:
+    st.subheader("Extracted Text From Image")
+    text = state.get("extracted_text", "")
+    if text:
+        st.text_area("OCR text", value=text, height=180, disabled=True)
+    else:
+        st.info("No uploaded image text was extracted.")
 
 
 def render_online_search_results(state: dict) -> None:
-    st.subheader("Online Search Results")
+    st.subheader("Online Research Results")
     status = state.get("online_search_status", "no_verified_result")
     summary = state.get("online_search_summary", "No verified online result found.")
     api_results = state.get("api_result", {}).get("api_results", [])
     links = state.get("availability_links", [])
+    source_summaries = state.get("source_summaries", [])
 
     if status == "verified_result":
         st.success(summary)
@@ -128,8 +134,17 @@ def render_online_search_results(state: dict) -> None:
     if verified_links:
         for item in verified_links:
             st.markdown(f"- **Verified legal link:** [{item.get('label', 'Verified link')}]({item.get('url', '#')})")
-    if not verified_results and not verified_links:
-        st.write("No verified result was found in Google Books, Open Library, or legal availability lookup.")
+    trusted_sources = [source for source in source_summaries if source.get("is_trusted")]
+    if trusted_sources:
+        for source in trusted_sources[:10]:
+            st.markdown(
+                f"- **Research source ({source.get('source_type', 'source')}):** "
+                f"[{source.get('title') or source.get('url')}]({source.get('url', '#')})"
+            )
+            if source.get("snippet"):
+                st.caption(source["snippet"])
+    if not verified_results and not verified_links and not trusted_sources:
+        st.write("No verified result was found in Google Books, Open Library, trusted web sources, or legal availability lookup.")
 
     search_links = [item for item in links if item.get("kind") == "search suggestion"]
     if search_links:
@@ -138,11 +153,67 @@ def render_online_search_results(state: dict) -> None:
             st.markdown(f"- [{item.get('label', 'Search suggestion')}]({item.get('url', '#')})")
 
 
+def render_source_evidence(state: dict) -> None:
+    st.subheader("Source Evidence Table")
+    evidence = state.get("source_evidence", [])
+    if evidence:
+        st.dataframe(evidence, use_container_width=True, hide_index=True)
+        confidence = state.get("confidence_level")
+        if confidence:
+            st.caption(f"Overall confidence: {confidence}")
+    else:
+        st.info("No source evidence was collected.")
+
+
+def render_conflicts_uncertainty(state: dict) -> None:
+    st.subheader("Conflicts / Uncertainty")
+    conflicts = state.get("conflicts", [])
+    notes = state.get("uncertainty_notes", [])
+    if conflicts:
+        st.warning("Source conflicts found. Review before saving.")
+        for conflict in conflicts:
+            st.write(f"- {conflict}")
+    if notes:
+        for note in notes:
+            st.write(f"- {note}")
+    if not conflicts and not notes:
+        st.info("No conflicts or uncertainty notes were recorded.")
+
+
+def render_where_to_get(state: dict) -> None:
+    st.subheader("Where to Get the Book")
+    links = state.get("availability_links", [])
+    if not links:
+        st.info("No legal availability links were generated.")
+        return
+    for item in links:
+        st.markdown(f"- **{item.get('kind', 'link')}**: [{item.get('label', 'Link')}]({item.get('url', '#')})")
+
+
+def render_research_catalog_draft(state: dict) -> None:
+    st.subheader("Catalog Draft")
+    draft = state.get("catalog_draft", {})
+    if not draft:
+        st.info("No catalog draft generated.")
+        return
+    preview_fields = ["title", "author", "publisher", "publication_year_gregorian", "publication_year_hijri", "isbn", "issn", "deposit_number", "category"]
+    st.json({field: draft.get(field, "") for field in preview_fields})
+    st.caption("Use the Catalog Draft tab to review and edit all fields before saving, or save this draft as-is.")
+    if st.button("Save to Library", key="save_research_draft"):
+        book_id = database.add_book(draft)
+        st.success(f"Saved book #{book_id} to library.db.")
+
+
 def render_lookup_debug(state: dict) -> None:
     debug_steps = state.get("lookup_debug", [])
     if not debug_steps:
         return
     with st.expander("Lookup debug", expanded=False):
+        queries = state.get("search_queries", [])
+        if queries:
+            st.markdown("Generated search queries:")
+            for query in queries:
+                st.caption(f"- {query}")
         for step in debug_steps:
             result = "returned results" if step.get("returned_result") else "no result"
             st.write(f"**{step.get('step', 'lookup')}** - {result}")
@@ -150,6 +221,9 @@ def render_lookup_debug(state: dict) -> None:
                 st.caption(f"Query: {step['query']}")
             if step.get("note"):
                 st.caption(str(step["note"]))
+            if step.get("urls"):
+                for url in step["urls"]:
+                    st.caption(f"URL: {url}")
 
 
 def catalog_draft_section() -> None:

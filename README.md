@@ -11,7 +11,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Add `OPENAI_API_KEY` to `.env` or export it in your shell if you want cover/copyright-page image extraction.
+Add `OPENAI_API_KEY` to `.env` or export it in your shell if you want cover/copyright-page image extraction. Add `TAVILY_API_KEY` for deeper web research.
 
 ## Run
 
@@ -25,7 +25,7 @@ The first run creates a persistent SQLite file named `library.db` in the project
 
 - Search My Library searches SQLite first and shows room, cabinet, shelf, row/position, and status.
 - Research New Book accepts text, Arabic text, ISBN/ISSN, or an image upload.
-- The LangGraph workflow runs these nodes: `parse_user_input`, `extract_from_image`, `detect_identifiers`, `search_private_database`, `lookup_book_apis`, `research_availability`, `merge_and_validate_results`, `generate_catalog_draft`, `human_review_before_save`, and `save_to_database`.
+- The LangGraph workflow runs these nodes: `parse_user_input`, `extract_from_image`, `detect_identifiers`, `search_private_database`, `generate_search_queries`, `search_book_apis`, `search_web`, `visit_and_summarize_sources`, `compare_sources`, `merge_and_validate_results`, `research_availability`, `generate_catalog_draft`, `human_review_before_save`, and `save_to_database`.
 - Catalog Draft lets the librarian edit all fields before saving.
 - Where to Get the Book shows legal free links when verified and paid/search suggestions when not verified.
 - Database imports Excel/CSV files into persistent `library.db` and exports the current database as a CSV backup.
@@ -37,6 +37,14 @@ The first run creates a persistent SQLite file named `library.db` in the project
 - Existing records remain available after closing and reopening Streamlit.
 - The librarian only needs to upload a file again when importing a new or updated spreadsheet.
 - Use the Database tab's backup/export button to download the current database as CSV.
+
+## Web Research
+
+- Tavily is the first supported web search provider.
+- Set `WEB_SEARCH_PROVIDER=tavily` and `TAVILY_API_KEY=...` in `.env`.
+- If no Tavily key is configured, the app still runs and shows legal search links plus debug notes.
+- Web results are filtered to avoid obvious piracy/download sites and are treated as evidence, not automatically as truth.
+- The Research page shows online research results, source evidence, conflicts/uncertainty, legal availability links, and a debug panel with generated queries and lookup outcomes.
 
 ## Identifier Rules
 
