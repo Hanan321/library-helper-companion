@@ -20,7 +20,7 @@ def research_availability(
 
     if isbn:
         open_library = f"https://openlibrary.org/isbn/{urllib.parse.quote(isbn)}"
-        links.append({"label": "Open Library ISBN page", "url": open_library, "kind": "verified"})
+        links.append({"label": "Open Library ISBN page", "url": open_library, "kind": "search suggestion"})
 
     ia_link = _internet_archive_link(terms)
     if ia_link:
