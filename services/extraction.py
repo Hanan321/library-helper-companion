@@ -34,8 +34,10 @@ def detect_identifiers(text: str) -> IdentifierResult:
         text,
         flags=re.IGNORECASE,
     )
+    issn_matches = [candidate for candidate in issn_matches if _valid_issn(candidate)]
     if not issn_matches:
-        issn_matches = re.findall(r"\b[0-9]{4}[-\s]?[0-9Xx]{4}\b", text)
+        candidates = re.findall(r"\b[0-9]{4}[-\s]?[0-9Xx]{4}\b", text)
+        issn_matches = [candidate for candidate in candidates if _valid_issn(candidate)]
     result.issn = _clean_issn(issn_matches[0]) if issn_matches else ""
 
     deposit_matches = re.findall(
@@ -161,6 +163,22 @@ def _clean_isbn(value: str) -> str:
 def _clean_issn(value: str) -> str:
     compact = re.sub(r"[^0-9Xx]", "", normalize_digits(value or "")).upper()
     return f"{compact[:4]}-{compact[4:8]}" if len(compact) >= 8 else compact
+
+
+def _valid_issn(value: str) -> bool:
+    compact = re.sub(r"[^0-9Xx]", "", normalize_digits(value or "")).upper()
+    if len(compact) != 8:
+        return False
+    total = 0
+    for index, char in enumerate(compact):
+        if index == 7 and char == "X":
+            digit = 10
+        elif char.isdigit():
+            digit = int(char)
+        else:
+            return False
+        total += digit * (8 - index)
+    return total % 11 == 0
 
 
 def _clean_text(value: str) -> str:
