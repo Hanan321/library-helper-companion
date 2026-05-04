@@ -191,7 +191,7 @@ def _extract_article_title(lines: list[str]) -> str:
         normalized = normalize_digits(line).lower()
         if any(word in normalized for word in ["إعداد", "اعداد", "prepared by"]):
             break
-        if not collecting and any(word in normalized for word in ["هـ", "ه-", "م", "20", "19"]):
+        if not collecting and _looks_like_issue_or_date_line(normalized):
             collecting = True
             continue
         if collecting and not any(word in normalized for word in skip_words) and not _looks_like_identifier_line(line):
@@ -199,6 +199,13 @@ def _extract_article_title(lines: list[str]) -> str:
         if len(article_lines) >= 2:
             break
     return " - ".join(article_lines)
+
+
+def _looks_like_issue_or_date_line(normalized_line: str) -> bool:
+    has_issue_word = "العدد" in normalized_line or "عدد" in normalized_line
+    has_year = bool(re.search(r"(?<![0-9])(1[2345][0-9]{2}|1[5-9][0-9]{2}|20[0-9]{2})(?![0-9])", normalized_line))
+    has_date_suffix = "هـ" in normalized_line or "ه" in normalized_line or "م" in normalized_line
+    return has_issue_word or (has_year and has_date_suffix)
 
 
 def _looks_like_identifier_line(value: str) -> bool:
