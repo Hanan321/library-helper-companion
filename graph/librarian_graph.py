@@ -317,6 +317,10 @@ def merge_and_validate_results(state: LibrarianState) -> LibrarianState:
     fields = _best_fields(state)
     notes = list(state.get("uncertainty_notes", []))
     conflicts = list(state.get("conflicts", []))
+    if not fields.get("description") and state.get("extracted_text"):
+        parsed_ocr = extract_basic_fields_from_text(state["extracted_text"])
+        if parsed_ocr.get("description"):
+            fields["description"] = parsed_ocr["description"]
 
     if fields.get("publication_year_hijri") and not fields.get("publication_year_gregorian"):
         calculated, note = hijri_to_gregorian_placeholder(fields["publication_year_hijri"])

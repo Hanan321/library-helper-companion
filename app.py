@@ -8,6 +8,7 @@ import streamlit as st
 from graph.librarian_graph import build_librarian_graph
 from models.schema import BOOK_FIELDS, STATUS_OPTIONS
 from services import database
+from services.extraction import extract_basic_fields_from_text
 
 
 st.set_page_config(page_title="AI Librarian Agent", page_icon="📚", layout="wide")
@@ -128,9 +129,10 @@ def render_catalog_summary(state: dict) -> None:
     draft = state.get("catalog_draft", {})
     identifiers = state.get("identifiers", {})
     get_link = best_get_link(state)
+    article_title = draft.get("description") or extract_basic_fields_from_text(state.get("extracted_text", "")).get("description", "")
     rows = [
         {"Field": "Title", "Value": draft.get("title", "")},
-        {"Field": "Article title", "Value": draft.get("description", "")},
+        {"Field": "Article title", "Value": article_title},
         {"Field": "Author / Editor", "Value": draft.get("author", "")},
         {"Field": "Publisher", "Value": draft.get("publisher", "")},
         {"Field": "Hijri date", "Value": draft.get("publication_year_hijri", "")},
@@ -145,7 +147,10 @@ def render_catalog_summary(state: dict) -> None:
     if get_link.get("url"):
         st.markdown(f"**Where to buy/get:** [{get_link['label']}]({get_link['url']})")
     if st.button("Save to Library", key="save_research_summary"):
-        book_id = database.add_book(draft)
+        save_draft = dict(draft)
+        if article_title and not save_draft.get("description"):
+            save_draft["description"] = article_title
+        book_id = database.add_book(save_draft)
         st.success(f"Saved book #{book_id} to library.db.")
 
 
