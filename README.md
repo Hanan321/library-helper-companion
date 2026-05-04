@@ -41,8 +41,8 @@ The first run creates a persistent SQLite file named `library.db` in the project
 ## Web Research
 
 - Tavily is the first supported web search provider.
-- Set `WEB_SEARCH_PROVIDER=tavily` and `TAVILY_API_KEY=...` in `.env`.
-- If no Tavily key is configured, the app still runs and shows legal search links plus debug notes.
+- Set `WEB_SEARCH_PROVIDER=tavily` and `TAVILY_API_KEY=...` in `.env`, exported environment variables, or Streamlit secrets.
+- If no Tavily key is configured, the app still runs and shows: `TAVILY_API_KEY is missing. Web search is disabled.`
 - Web results are filtered to avoid obvious piracy/download sites and are treated as evidence, not automatically as truth.
 - The Research page shows online research results, source evidence, conflicts/uncertainty, legal availability links, and a debug panel with generated queries and lookup outcomes.
 

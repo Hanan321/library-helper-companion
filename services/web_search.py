@@ -51,32 +51,48 @@ def search_web(queries: list[str], max_results_per_query: int = 5) -> dict[str, 
     api_key = os.getenv("TAVILY_API_KEY") or os.getenv("WEB_SEARCH_API_KEY")
     debug: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
+    meta = {
+        "provider": provider or "tavily",
+        "api_key_found": bool(api_key),
+        "tavily_called": False,
+        "result_count": 0,
+        "errors": [],
+    }
 
     if provider not in {"tavily", ""}:
+        meta["errors"].append(f"Unsupported provider: {provider}")
         debug.append(
             {
                 "step": "search_web",
                 "query": provider,
                 "returned_result": False,
+                "api_key_found": bool(api_key),
+                "tavily_called": False,
+                "result_count": 0,
                 "note": f"Unsupported WEB_SEARCH_PROVIDER '{provider}'. Tavily is currently implemented.",
             }
         )
-        return {"results": [], "debug_steps": debug, "errors": [f"Unsupported provider: {provider}"]}
+        return {"results": [], "debug_steps": debug, "errors": meta["errors"], "meta": meta}
 
     if not api_key:
+        meta["errors"].append("TAVILY_API_KEY is missing. Web search is disabled.")
         debug.append(
             {
                 "step": "search_web",
                 "query": "Tavily",
                 "returned_result": False,
-                "note": "TAVILY_API_KEY or WEB_SEARCH_API_KEY is not set.",
+                "api_key_found": False,
+                "tavily_called": False,
+                "result_count": 0,
+                "note": "TAVILY_API_KEY is missing. Web search is disabled.",
             }
         )
-        return {"results": [], "debug_steps": debug, "errors": ["Missing Tavily API key."]}
+        return {"results": [], "debug_steps": debug, "errors": meta["errors"], "meta": meta}
 
     seen_urls = set()
     for query in queries[:10]:
         try:
+            meta["tavily_called"] = True
             response = requests.post(
                 TAVILY_SEARCH_URL,
                 json={
@@ -104,20 +120,29 @@ def search_web(queries: list[str], max_results_per_query: int = 5) -> dict[str, 
                     "step": "search_web",
                     "query": query,
                     "returned_result": bool(safe_results),
+                    "api_key_found": True,
+                    "tavily_called": True,
+                    "result_count": len(safe_results),
                     "note": f"Tavily returned {len(raw_results)} result(s), {len(safe_results)} legal-safe result(s) kept.",
                     "urls": [item["url"] for item in safe_results],
                 }
             )
         except requests.RequestException as exc:
+            error = f"Tavily search failed: {exc}"
+            meta["errors"].append(error)
             debug.append(
                 {
                     "step": "search_web",
                     "query": query,
                     "returned_result": False,
-                    "note": f"Tavily search failed: {exc}",
+                    "api_key_found": True,
+                    "tavily_called": True,
+                    "result_count": 0,
+                    "note": error,
                 }
             )
-    return {"results": results, "debug_steps": debug, "errors": [step["note"] for step in debug if "failed" in step["note"].lower()]}
+    meta["result_count"] = len(results)
+    return {"results": results, "debug_steps": debug, "errors": meta["errors"], "meta": meta}
 
 
 def summarize_sources(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
