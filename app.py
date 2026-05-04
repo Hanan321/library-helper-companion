@@ -76,13 +76,17 @@ def research_new_book() -> None:
     if not state:
         return
 
+    st.caption(f"Detected item type: {state.get('item_type', 'unknown')}")
     private_matches = state.get("private_matches", [])
     if private_matches:
         st.success("Found possible match in the private library before online recommendations.")
         for book in private_matches[:5]:
             render_book_result(book)
     else:
-        st.info("No private database match found. A catalog draft was generated from available sources.")
+        st.info("No private database match found.")
+
+    render_online_search_results(state)
+    render_lookup_debug(state)
 
     if state.get("conflicts"):
         st.warning("Source conflicts found. Review notes before saving.")
@@ -92,6 +96,60 @@ def research_new_book() -> None:
         with st.expander("Confidence and uncertainty notes", expanded=True):
             for note in state["uncertainty_notes"]:
                 st.write(f"- {note}")
+
+
+def render_online_search_results(state: dict) -> None:
+    st.subheader("Online Search Results")
+    status = state.get("online_search_status", "no_verified_result")
+    summary = state.get("online_search_summary", "No verified online result found.")
+    api_results = state.get("api_result", {}).get("api_results", [])
+    links = state.get("availability_links", [])
+
+    if status == "verified_result":
+        st.success(summary)
+    elif status == "image_only":
+        st.warning(summary)
+    elif status == "search_links_only":
+        st.info(summary)
+    else:
+        st.info(summary)
+
+    verified_results = [result for result in api_results if result.get("title") or result.get("source_links") or result.get("isbn")]
+    verified_links = [item for item in links if item.get("kind") == "verified"]
+    if verified_results:
+        for result in verified_results:
+            source = result.get("source", "Online source")
+            title = result.get("title", "Untitled result")
+            url = result.get("source_links", "")
+            if url:
+                st.markdown(f"- **Verified result from {source}:** [{title}]({url})")
+            else:
+                st.markdown(f"- **Verified result from {source}:** {title}")
+    if verified_links:
+        for item in verified_links:
+            st.markdown(f"- **Verified legal link:** [{item.get('label', 'Verified link')}]({item.get('url', '#')})")
+    if not verified_results and not verified_links:
+        st.write("No verified result was found in Google Books, Open Library, or legal availability lookup.")
+
+    search_links = [item for item in links if item.get("kind") == "search suggestion"]
+    if search_links:
+        st.markdown("Search links only:")
+        for item in search_links:
+            st.markdown(f"- [{item.get('label', 'Search suggestion')}]({item.get('url', '#')})")
+
+
+def render_lookup_debug(state: dict) -> None:
+    debug_steps = state.get("lookup_debug", [])
+    if not debug_steps:
+        return
+    with st.expander("Lookup debug", expanded=False):
+        for step in debug_steps:
+            result = "returned results" if step.get("returned_result") else "no result"
+            st.write(f"**{step.get('step', 'lookup')}** - {result}")
+            if step.get("query"):
+                st.caption(f"Query: {step['query']}")
+            if step.get("note"):
+                st.caption(str(step["note"]))
 
 
 def catalog_draft_section() -> None:
