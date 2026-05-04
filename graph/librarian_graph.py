@@ -25,6 +25,7 @@ class LibrarianState(TypedDict, total=False):
     search_queries: list[str]
     api_result: dict[str, Any]
     web_results: list[dict[str, Any]]
+    web_search_meta: dict[str, Any]
     source_summaries: list[dict[str, Any]]
     source_evidence: list[dict[str, Any]]
     confidence_level: str
@@ -233,7 +234,7 @@ def search_book_apis_node(state: LibrarianState) -> LibrarianState:
 def search_web_node(state: LibrarianState) -> LibrarianState:
     result = search_web(state.get("search_queries", []))
     debug = list(state.get("lookup_debug", [])) + result.get("debug_steps", [])
-    return {"web_results": result.get("results", []), "lookup_debug": debug}
+    return {"web_results": result.get("results", []), "web_search_meta": result.get("meta", {}), "lookup_debug": debug}
 
 
 def visit_and_summarize_sources(state: LibrarianState) -> LibrarianState:

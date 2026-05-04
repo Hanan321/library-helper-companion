@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import streamlit as st
 
 from graph.librarian_graph import build_librarian_graph
@@ -10,12 +13,32 @@ from services import database
 st.set_page_config(page_title="AI Librarian Agent", page_icon="📚", layout="wide")
 
 
+def load_runtime_config() -> None:
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            clean = line.strip()
+            if not clean or clean.startswith("#") or "=" not in clean:
+                continue
+            key, value = clean.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+    for key in ["OPENAI_API_KEY", "OPENAI_MODEL", "WEB_SEARCH_PROVIDER", "WEB_SEARCH_API_KEY", "TAVILY_API_KEY"]:
+        try:
+            value = st.secrets.get(key)
+        except Exception:
+            value = None
+        if value:
+            os.environ[key] = str(value)
+
+
 @st.cache_resource
 def get_graph():
     return build_librarian_graph()
 
 
 def main() -> None:
+    load_runtime_config()
     database.init_db()
 
     st.title("AI Librarian Agent")
@@ -53,10 +76,13 @@ def search_my_library() -> None:
 
 def research_new_book() -> None:
     st.subheader("Research New Book")
+    if not (os.getenv("TAVILY_API_KEY") or os.getenv("WEB_SEARCH_API_KEY")):
+        st.warning("TAVILY_API_KEY is missing. Web search is disabled.")
     text_query = st.text_area("Title, author, ISBN/ISSN, Arabic text, or notes", height=120)
     uploaded = st.file_uploader("Upload cover or copyright page image", type=["png", "jpg", "jpeg", "webp"])
 
     if st.button("Research", type="primary"):
+        load_runtime_config()
         image_bytes = uploaded.getvalue() if uploaded else None
         image_mime = uploaded.type if uploaded else ""
         with st.spinner("Searching private database first, then legal metadata sources..."):
@@ -92,7 +118,7 @@ def research_new_book() -> None:
     render_conflicts_uncertainty(state)
     render_where_to_get(state)
     render_research_catalog_draft(state)
-    render_lookup_debug(state)
+    render_research_debug(state)
 
 def render_extracted_text(state: dict) -> None:
     st.subheader("Extracted Text From Image")
@@ -104,12 +130,17 @@ def render_extracted_text(state: dict) -> None:
 
 
 def render_online_search_results(state: dict) -> None:
-    st.subheader("Online Research Results")
+    st.subheader("Online Search Results")
     status = state.get("online_search_status", "no_verified_result")
     summary = state.get("online_search_summary", "No verified online result found.")
     api_results = state.get("api_result", {}).get("api_results", [])
+    web_results = state.get("web_results", [])
+    web_meta = state.get("web_search_meta", {})
     links = state.get("availability_links", [])
     source_summaries = state.get("source_summaries", [])
+
+    if not web_meta.get("api_key_found"):
+        st.warning("TAVILY_API_KEY is missing. Web search is disabled.")
 
     if status == "verified_result":
         st.success(summary)
@@ -143,7 +174,17 @@ def render_online_search_results(state: dict) -> None:
             )
             if source.get("snippet"):
                 st.caption(source["snippet"])
-    if not verified_results and not verified_links and not trusted_sources:
+
+    if web_results:
+        st.markdown("Tavily web results:")
+        for result in web_results[:12]:
+            st.markdown(f"**{result.get('title') or 'Untitled result'}**")
+            st.markdown(f"[{result.get('url')}]({result.get('url')})")
+            st.caption(f"Provider/source: Tavily / {result.get('source', 'web')}")
+            if result.get("snippet"):
+                st.write(result["snippet"])
+
+    if not verified_results and not verified_links and not trusted_sources and not web_results:
         st.write("No verified result was found in Google Books, Open Library, trusted web sources, or legal availability lookup.")
 
     search_links = [item for item in links if item.get("kind") == "search suggestion"]
@@ -204,16 +245,27 @@ def render_research_catalog_draft(state: dict) -> None:
         st.success(f"Saved book #{book_id} to library.db.")
 
 
-def render_lookup_debug(state: dict) -> None:
+def render_research_debug(state: dict) -> None:
     debug_steps = state.get("lookup_debug", [])
-    if not debug_steps:
-        return
-    with st.expander("Lookup debug", expanded=False):
+    web_meta = state.get("web_search_meta", {})
+    with st.expander("Research Debug", expanded=False):
+        st.markdown("Extracted text:")
+        st.text(state.get("extracted_text", "") or "(none)")
+        st.write(f"TAVILY_API_KEY found: {bool(web_meta.get('api_key_found'))}")
+        st.write(f"Tavily called: {bool(web_meta.get('tavily_called'))}")
+        st.write(f"Tavily result count: {web_meta.get('result_count', 0)}")
+        errors = web_meta.get("errors", [])
+        if errors:
+            st.markdown("Errors:")
+            for error in errors:
+                st.caption(f"- {error}")
         queries = state.get("search_queries", [])
         if queries:
             st.markdown("Generated search queries:")
             for query in queries:
                 st.caption(f"- {query}")
+        if not debug_steps:
+            return
         for step in debug_steps:
             result = "returned results" if step.get("returned_result") else "no result"
             st.write(f"**{step.get('step', 'lookup')}** - {result}")
